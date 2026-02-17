@@ -12,6 +12,9 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 from datetime import datetime, timedelta
+import customtkinter as ctk
+import ctypes
+import subprocess
 
 
 # ========================================
@@ -104,7 +107,7 @@ class FloatingTimerWindow:
     """Janela flutuante always-on-top para exibir timer/cronômetro."""
 
     def __init__(self, is_timer=True, total_minutes=0):
-        self.root = tk.Tk()
+        self.root = ctk.CTk()
         self.root.title("Pomodoro")
 
         # Configuração da janela
@@ -114,7 +117,7 @@ class FloatingTimerWindow:
 
         # Posicionar no canto inferior direito
         window_width = 150
-        window_height = 150
+        window_height = 170
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         x = screen_width - window_width - 20
@@ -129,6 +132,7 @@ class FloatingTimerWindow:
         self.paused = False
         self.cancelled = False
         self.saved_minutes = None
+        self.after_ids = []  # Rastrear IDs de callbacks agendados
 
         # Variáveis para drag/redimensionamento
         self.drag_start_x = 0
@@ -152,10 +156,10 @@ class FloatingTimerWindow:
     def create_widgets(self):
         """Cria os widgets da janela."""
         # Frame de título para arrastar a janela
-        title_frame = tk.Frame(self.root, bg="#1A252F", height=20)
+        title_frame = ctk.CTkFrame(self.root, fg_color="#1A252F", height=20, corner_radius=0)
         title_frame.pack(fill=tk.X)
 
-        title_label = tk.Label(title_frame, text="TIMER" if self.is_timer else "CRONÔMETRO", font=("Arial", 8, "bold"), bg="#1A252F", fg="#ECF0F1")
+        title_label = ctk.CTkLabel(title_frame, text="TIMER" if self.is_timer else "CRONÔMETRO", font=("Arial", 8, "bold"), text_color="#ECF0F1")
         title_label.pack(fill=tk.X, padx=5, pady=2)
 
         # Bind de drag para o frame de título
@@ -163,56 +167,53 @@ class FloatingTimerWindow:
         title_label.bind("<B1-Motion>", self.on_title_drag)
         title_label.bind("<ButtonRelease-1>", self.on_title_release)
 
+        # Armazenar referência para limpeza posterior
+        self.title_label = title_label
+
         # Frame principal
-        main_frame = tk.Frame(self.root, bg="#2C3E50", padx=8, pady=8)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame = ctk.CTkFrame(self.root, fg_color="#2C3E50", corner_radius=0)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
 
         # Label de progresso (barras) - apenas para timer
-        self.progress_label = tk.Label(main_frame, text="", font=("Courier", 10, "bold"), bg="#2C3E50", fg="#3498DB")
+        self.progress_label = ctk.CTkLabel(main_frame, text="", font=("Courier", 10, "bold"), text_color="#3498DB")
         if self.is_timer:
             self.progress_label.pack(pady=2)
 
         # Label de tempo
-        self.time_label = tk.Label(main_frame, text="00:00:00", font=("Arial", 14, "bold"), bg="#2C3E50", fg="#4A6988" if self.is_timer else "#2ECC71")
+        self.time_label = ctk.CTkLabel(main_frame, text="00:00:00", font=("Arial", 14, "bold"), text_color="#4A6988" if self.is_timer else "#2ECC71")
         self.time_label.pack(pady=5)
 
         # Botões de controle: Pausar/Retomar | Finalizar
-        btn_frame = tk.Frame(main_frame, bg="#2C3E50")
+        btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         btn_frame.pack(pady=4)
 
-        self.pause_button = tk.Button(
+        self.pause_button = ctk.CTkButton(
             btn_frame,
             text="⏸",
             command=self.toggle_pause,
             font=("Arial", 12, "bold"),
-            bg="#3498DB",
-            fg="white",
+            fg_color="#3498DB",
+            hover_color="#2980B9",
+            text_color="white",
             cursor="hand2",
-            relief=tk.FLAT,
-            bd=0,
-            padx=12,
-            pady=6,
-            activebackground="#2980B9",
-            activeforeground="white",
-            highlightthickness=0,
+            corner_radius=8,
+            width=50,
+            height=40,
         )
         self.pause_button.grid(row=0, column=0, padx=4, pady=2)
 
-        self.finish_button = tk.Button(
+        self.finish_button = ctk.CTkButton(
             btn_frame,
             text="✓",
             command=self.finalize_action,
             font=("Arial", 13, "bold"),
-            bg="#27AE60",
-            fg="white",
+            fg_color="#27AE60",
+            hover_color="#229954",
+            text_color="white",
             cursor="hand2",
-            relief=tk.FLAT,
-            bd=0,
-            padx=14,
-            pady=6,
-            activebackground="#229954",
-            activeforeground="white",
-            highlightthickness=0,
+            corner_radius=8,
+            width=50,
+            height=40,
         )
         self.finish_button.grid(row=0, column=1, padx=4, pady=2)
 
@@ -250,6 +251,10 @@ class FloatingTimerWindow:
 
     def update_display(self, seconds):
         """Atualiza display com tempo e progresso."""
+        # Verificar se a janela ainda existe
+        if not self.root.winfo_exists():
+            return
+
         time_str = format_time(abs(seconds))
 
         if self.is_timer:
@@ -258,36 +263,137 @@ class FloatingTimerWindow:
             progress = min(progress, 10)
             bars = "#" * progress + "·" * (10 - progress)
             # Atualizar labels
-            self.root.after(0, lambda: self.progress_label.config(text=bars))
+            if self.root.winfo_exists():
+                after_id = self.root.after(0, lambda: self.progress_label.configure(text=bars) if self.root.winfo_exists() else None)
+                self.after_ids.append(after_id)
 
         # Atualizar label de tempo
-        self.root.after(0, lambda: self.time_label.config(text=time_str))
+        if self.root.winfo_exists():
+            after_id = self.root.after(0, lambda: self.time_label.configure(text=time_str) if self.root.winfo_exists() else None)
+            self.after_ids.append(after_id)
 
     def finish_timer(self):
         """Finaliza o timer com notificação."""
         self.running = False
+        self.cancel_all_after()  # Cancelar todos os callbacks
+        time.sleep(0.1)  # Aguardar thread finalizar
 
         # Atualizar display final
-        if self.is_timer:
-            self.progress_label.config(text="##########")
-        self.time_label.config(text="00:00:00")
-
-        self.root.bell()
+        try:
+            if self.root.winfo_exists():
+                if self.is_timer:
+                    self.progress_label.configure(text="##########")
+                self.time_label.configure(text="00:00:00")
+                self.root.bell()
+        except:
+            pass
 
         # Mostrar notificação (bloqueia até o usuário fechar)
         messagebox.showinfo("Pomodoro Finalizado!", "🎉 Seu timer terminou!\n\nHora de fazer uma pausa!")
 
         # Só fecha depois que o usuário clicar OK
-        self.root.destroy()
+        self.destroy_window()
 
     def toggle_pause(self):
-        """Alterna entre pausar e retomar."""
+        """Alterna pausa com feedback visual animado."""
         if not self.paused:
             self.paused = True
-            self.pause_button.config(text="▶")
+            self.pause_button.configure(text="▶")
+            self.pause_button.configure(fg_color="#E74C3C")
         else:
             self.paused = False
-            self.pause_button.config(text="⏸")
+            self.pause_button.configure(text="⏸")
+            self.pause_button.configure(fg_color="#3498DB")
+
+        # Pulso visual de confirmação
+        self.pulse_button()
+
+    def pulse_button(self):
+        """Cria um efeito de pulso no botão."""
+        if not self.root.winfo_exists():
+            return
+        try:
+            self.pause_button.configure(fg_color="#F39C12")
+            after_id = self.root.after(150, lambda: self.restore_button_color())
+            self.after_ids.append(after_id)
+        except:
+            pass
+
+    def restore_button_color(self):
+        """Restaura a cor original do botão."""
+        if not self.root.winfo_exists():
+            return
+        try:
+            color = "#E74C3C" if self.paused else "#3498DB"
+            self.pause_button.configure(fg_color=color)
+        except:
+            pass
+
+    def cancel_all_after(self):
+        """Cancela todos os callbacks agendados e remove binds."""
+        # Cancelar callbacks agendados
+        for after_id in self.after_ids:
+            try:
+                self.root.after_cancel(after_id)
+            except:
+                pass
+        self.after_ids.clear()
+
+        # Remover event binds
+        try:
+            self.title_label.unbind("<Button-1>")
+            self.title_label.unbind("<B1-Motion>")
+            self.title_label.unbind("<ButtonRelease-1>")
+        except:
+            pass
+
+    def destroy_window(self):
+        """Destrói a janela suprimindo erros de callbacks internos do customtkinter."""
+        if not self.root.winfo_exists():
+            return
+
+        # Suprimir erros de Tcl redirecionar file descriptors
+        try:
+            # Salvar file descriptors originais
+            old_stderr_fd = os.dup(2)  # stderr
+
+            # Abrir /dev/null (ou nul no Windows)
+            null_fd = os.open(os.devnull, os.O_RDWR)
+
+            # Redirecionar stderr para null
+            os.dup2(null_fd, 2)
+
+            # Destruir a janela
+            try:
+                self.root.destroy()
+            finally:
+                # Fechar null_fd
+                os.close(null_fd)
+                # Restaurar stderr
+                os.dup2(old_stderr_fd, 2)
+                os.close(old_stderr_fd)
+        except:
+            # Fallback simples
+            try:
+                self.root.destroy()
+            except:
+                pass
+        try:
+            self.pause_button.configure(fg_color="#F39C12")
+            after_id = self.root.after(150, lambda: self.restore_button_color())
+            self.after_ids.append(after_id)
+        except:
+            pass
+
+    def restore_button_color(self):
+        """Restaura a cor original do botão."""
+        if not self.root.winfo_exists():
+            return
+        try:
+            color = "#E74C3C" if self.paused else "#3498DB"
+            self.pause_button.configure(fg_color=color)
+        except:
+            pass
 
     def finalize_action(self):
         """Finaliza a sessão e marca para salvar os minutos decorrido."""
@@ -299,15 +405,19 @@ class FloatingTimerWindow:
 
         self.saved_minutes = minutes
         self.running = False
+        self.cancel_all_after()  # Cancelar todos os callbacks
         # Não marcar como cancelado para indicar "finalizar"
         self.cancelled = False
-        self.root.destroy()
+        time.sleep(0.1)  # Aguardar thread finalizar
+        self.destroy_window()
 
     def on_closing(self):
         """Fecha a janela."""
         self.running = False
+        self.cancel_all_after()  # Cancelar todos os callbacks
+        time.sleep(0.1)  # Aguardar thread finalizar
         self.cancelled = True
-        self.root.destroy()
+        self.destroy_window()
 
     def get_elapsed_minutes(self):
         """Retorna minutos decorridos."""
