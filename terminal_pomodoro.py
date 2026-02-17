@@ -159,7 +159,7 @@ class FloatingTimerWindow:
         title_frame = ctk.CTkFrame(self.root, fg_color="#1A252F", height=20, corner_radius=0)
         title_frame.pack(fill=tk.X)
 
-        title_label = ctk.CTkLabel(title_frame, text="TIMER" if self.is_timer else "CRONÔMETRO", font=("Arial", 8, "bold"), text_color="#ECF0F1")
+        title_label = ctk.CTkLabel(title_frame, text="TIMER" if self.is_timer else "CRONÔMETRO", font=("Arial", 9, "bold"), text_color="#ECF0F1")
         title_label.pack(fill=tk.X, padx=5, pady=2)
 
         # Bind de drag para o frame de título
@@ -175,12 +175,12 @@ class FloatingTimerWindow:
         main_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
 
         # Label de progresso (barras) - apenas para timer
-        self.progress_label = ctk.CTkLabel(main_frame, text="", font=("Courier", 10, "bold"), text_color="#3498DB")
+        self.progress_label = ctk.CTkLabel(main_frame, text="", font=("Courier", 12, "bold"), text_color="#3498DB")
         if self.is_timer:
             self.progress_label.pack(pady=2)
 
         # Label de tempo
-        self.time_label = ctk.CTkLabel(main_frame, text="00:00:00", font=("Arial", 14, "bold"), text_color="#4A6988" if self.is_timer else "#2ECC71")
+        self.time_label = ctk.CTkLabel(main_frame, text="00:00:00", font=("Arial", 16, "bold"), text_color="#4A6988" if self.is_timer else "#2ECC71")
         self.time_label.pack(pady=5)
 
         # Botões de controle: Pausar/Retomar | Finalizar
@@ -191,14 +191,14 @@ class FloatingTimerWindow:
             btn_frame,
             text="⏸",
             command=self.toggle_pause,
-            font=("Arial", 12, "bold"),
+            font=("Arial", 14, "bold"),
             fg_color="#3498DB",
             hover_color="#2980B9",
             text_color="white",
             cursor="hand2",
             corner_radius=8,
-            width=50,
-            height=40,
+            width=35,
+            height=28,
         )
         self.pause_button.grid(row=0, column=0, padx=4, pady=2)
 
@@ -206,14 +206,14 @@ class FloatingTimerWindow:
             btn_frame,
             text="✓",
             command=self.finalize_action,
-            font=("Arial", 13, "bold"),
+            font=("Arial", 15, "bold"),
             fg_color="#27AE60",
             hover_color="#229954",
             text_color="white",
             cursor="hand2",
             corner_radius=8,
-            width=50,
-            height=40,
+            width=35,
+            height=28,
         )
         self.finish_button.grid(row=0, column=1, padx=4, pady=2)
 
