@@ -109,14 +109,16 @@ class FloatingTimerWindow:
 
         # Configuração da janela
         self.root.attributes("-topmost", True)  # Sempre no topo
-        self.root.resizable(False, False)
+        self.root.resizable(False, False)  # Não permite redimensionar
+        self.root.overrideredirect(True)  # Remove barra de títulos
 
-        # Posicionar no canto superior direito
-        window_width = 175
-        window_height = 120
+        # Posicionar no canto inferior direito
+        window_width = 150
+        window_height = 150
         screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
         x = screen_width - window_width - 20
-        y = 20
+        y = screen_height - window_height - 100
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
         # Variáveis
@@ -127,6 +129,15 @@ class FloatingTimerWindow:
         self.paused = False
         self.cancelled = False
         self.saved_minutes = None
+
+        # Variáveis para drag/redimensionamento
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+        self.drag_start_width = 0
+        self.drag_start_height = 0
+        self.resizing = False
+        self.dragging = False
+        self.resize_border = 5  # Pixels da borda para detecção de resize
 
         # Interface
         self.create_widgets()
@@ -140,34 +151,70 @@ class FloatingTimerWindow:
 
     def create_widgets(self):
         """Cria os widgets da janela."""
+        # Frame de título para arrastar a janela
+        title_frame = tk.Frame(self.root, bg="#1A252F", height=20)
+        title_frame.pack(fill=tk.X)
+
+        title_label = tk.Label(title_frame, text="TIMER" if self.is_timer else "CRONÔMETRO", font=("Arial", 8, "bold"), bg="#1A252F", fg="#ECF0F1")
+        title_label.pack(fill=tk.X, padx=5, pady=2)
+
+        # Bind de drag para o frame de título
+        title_label.bind("<Button-1>", self.on_title_press)
+        title_label.bind("<B1-Motion>", self.on_title_drag)
+        title_label.bind("<ButtonRelease-1>", self.on_title_release)
+
         # Frame principal
-        main_frame = tk.Frame(self.root, bg="#2C3E50", padx=15, pady=15)
+        main_frame = tk.Frame(self.root, bg="#2C3E50", padx=8, pady=8)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Tipo de sessão
-        type_label = tk.Label(main_frame, text="TIMER" if self.is_timer else "CRONÔMETRO", font=("Arial", 10, "bold"), bg="#2C3E50", fg="#ECF0F1")
-        type_label.pack()
-
-        # Label de progresso (barras)
-        self.progress_label = tk.Label(main_frame, text="", font=("Courier", 14, "bold"), bg="#2C3E50", fg="#3498DB")
-        self.progress_label.pack(pady=5)
+        # Label de progresso (barras) - apenas para timer
+        self.progress_label = tk.Label(main_frame, text="", font=("Courier", 10, "bold"), bg="#2C3E50", fg="#3498DB")
+        if self.is_timer:
+            self.progress_label.pack(pady=2)
 
         # Label de tempo
-        self.time_label = tk.Label(main_frame, text="00:00:00", font=("Arial", 16, "bold"), bg="#2C3E50", fg="#4A6988" if self.is_timer else "#2ECC71")
+        self.time_label = tk.Label(main_frame, text="00:00:00", font=("Arial", 14, "bold"), bg="#2C3E50", fg="#4A6988" if self.is_timer else "#2ECC71")
         self.time_label.pack(pady=5)
 
-        # Botões de controle: Pausar/Retomar | Finalizar | Cancelar
+        # Botões de controle: Pausar/Retomar | Finalizar
         btn_frame = tk.Frame(main_frame, bg="#2C3E50")
-        btn_frame.pack(pady=5)
+        btn_frame.pack(pady=4)
 
-        self.pause_button = tk.Button(btn_frame, text="Pausar", command=self.toggle_pause, font=("Arial", 10), bg="#F39C12", fg="white", cursor="hand2", relief=tk.FLAT, padx=8, pady=3)
-        self.pause_button.grid(row=0, column=0, padx=4)
+        self.pause_button = tk.Button(
+            btn_frame,
+            text="⏸",
+            command=self.toggle_pause,
+            font=("Arial", 12, "bold"),
+            bg="#3498DB",
+            fg="white",
+            cursor="hand2",
+            relief=tk.FLAT,
+            bd=0,
+            padx=12,
+            pady=6,
+            activebackground="#2980B9",
+            activeforeground="white",
+            highlightthickness=0,
+        )
+        self.pause_button.grid(row=0, column=0, padx=4, pady=2)
 
-        self.finish_button = tk.Button(btn_frame, text="Finalizar", command=self.finalize_action, font=("Arial", 10), bg="#2ECC71", fg="white", cursor="hand2", relief=tk.FLAT, padx=8, pady=3)
-        self.finish_button.grid(row=0, column=1, padx=4)
-
-        self.cancel_button = tk.Button(btn_frame, text="Cancelar", command=self.on_closing, font=("Arial", 10), bg="#E74C3C", fg="white", cursor="hand2", relief=tk.FLAT, padx=8, pady=3)
-        self.cancel_button.grid(row=0, column=2, padx=4)
+        self.finish_button = tk.Button(
+            btn_frame,
+            text="✓",
+            command=self.finalize_action,
+            font=("Arial", 13, "bold"),
+            bg="#27AE60",
+            fg="white",
+            cursor="hand2",
+            relief=tk.FLAT,
+            bd=0,
+            padx=14,
+            pady=6,
+            activebackground="#229954",
+            activeforeground="white",
+            highlightthickness=0,
+        )
+        self.finish_button.grid(row=0, column=1, padx=4, pady=2)
 
     def count(self):
         """Thread de contagem."""
@@ -210,12 +257,10 @@ class FloatingTimerWindow:
             progress = int((self.elapsed_seconds / self.total_seconds) * 10)
             progress = min(progress, 10)
             bars = "#" * progress + "·" * (10 - progress)
-        else:
-            # Cronômetro não tem progresso fixo, apenas mostrar tempo
-            bars = "##########"
+            # Atualizar labels
+            self.root.after(0, lambda: self.progress_label.config(text=bars))
 
-        # Atualizar labels
-        self.root.after(0, lambda: self.progress_label.config(text=bars))
+        # Atualizar label de tempo
         self.root.after(0, lambda: self.time_label.config(text=time_str))
 
     def finish_timer(self):
@@ -223,7 +268,8 @@ class FloatingTimerWindow:
         self.running = False
 
         # Atualizar display final
-        self.progress_label.config(text="##########")
+        if self.is_timer:
+            self.progress_label.config(text="##########")
         self.time_label.config(text="00:00:00")
 
         self.root.bell()
@@ -238,10 +284,10 @@ class FloatingTimerWindow:
         """Alterna entre pausar e retomar."""
         if not self.paused:
             self.paused = True
-            self.pause_button.config(text="Retomar")
+            self.pause_button.config(text="▶")
         else:
             self.paused = False
-            self.pause_button.config(text="Pausar")
+            self.pause_button.config(text="⏸")
 
     def finalize_action(self):
         """Finaliza a sessão e marca para salvar os minutos decorrido."""
@@ -274,6 +320,54 @@ class FloatingTimerWindow:
     def run(self):
         """Inicia o loop da janela."""
         self.root.mainloop()
+
+    def on_mouse_motion(self, event):
+        """Detecta movimento do mouse - apenas para atualizar cursor em áreas de movimento."""
+        pass
+
+    def on_mouse_press(self, event):
+        """Inicia movimento da janela."""
+        pass
+
+    def on_mouse_drag(self, event):
+        """Move a janela."""
+        pass
+
+    def on_resize_press(self, event):
+        """Inicia redimensionamento pelo canto inferior direito."""
+        pass
+
+    def on_resize_drag(self, event):
+        """Redimensiona a janela pelo canto inferior direito."""
+        pass
+
+    def on_mouse_release(self, event):
+        """Para drag ou redimensionamento."""
+        pass
+
+    def on_title_press(self, event):
+        """Inicia movimento da janela via título."""
+        self.dragging = True
+        self.drag_start_x = event.x_root
+        self.drag_start_y = event.y_root
+
+    def on_title_drag(self, event):
+        """Move a janela via título."""
+        if self.dragging:
+            delta_x = event.x_root - self.drag_start_x
+            delta_y = event.y_root - self.drag_start_y
+
+            x = self.root.winfo_x() + delta_x
+            y = self.root.winfo_y() + delta_y
+
+            self.root.geometry(f"+{x}+{y}")
+
+            self.drag_start_x = event.x_root
+            self.drag_start_y = event.y_root
+
+    def on_title_release(self, event):
+        """Finaliza movimento da janela."""
+        self.dragging = False
 
 
 # ========================================
@@ -359,14 +453,15 @@ def run_stopwatch(objective):
     print("\n" + "=" * 40)
     print("CRONÔMETRO INICIADO")
     print("Uma janela flutuante foi aberta!")
-    print("Feche a janela para parar o cronômetro.")
+    print("Clique em 'Finalizar' para parar e contabilizar o tempo.")
     print("=" * 40 + "\n")
 
     window = FloatingTimerWindow(is_timer=False)
     window.run()
 
-    if not window.was_cancelled():
-        minutes = window.get_elapsed_minutes()
+    # Apenas salvar se o usuário clicou em "Finalizar"
+    if window.saved_minutes is not None:
+        minutes = window.saved_minutes
         print(f"\n{'=' * 40}")
         print("CRONÔMETRO FINALIZADO")
         print(f"Tempo total: {minutes} minutos")
@@ -374,7 +469,7 @@ def run_stopwatch(objective):
 
         save_session(objective, "cronometro", minutes)
     else:
-        print("\nCronômetro cancelado. Sessão não salva.")
+        print("\nCronômetro não finalizado. Sessão não salva.")
 
     input("\nPressione ENTER para continuar...")
 
@@ -384,18 +479,25 @@ def run_timer(objective, minutes):
     print("\n" + "=" * 40)
     print("TIMER INICIADO")
     print("Uma janela flutuante foi aberta!")
-    print("Feche a janela para cancelar o timer.")
+    print("Clique em 'Finalizar' para parar agora ou deixe terminar naturalmente.")
     print("=" * 40 + "\n")
 
     window = FloatingTimerWindow(is_timer=True, total_minutes=minutes)
     window.run()
 
     if not window.was_cancelled():
+        # Se o usuário finalizou manualmente, usar os minutos registrados
+        if window.saved_minutes is not None:
+            recorded = window.saved_minutes
+        else:
+            recorded = minutes
+
         print(f"\n{'=' * 40}")
         print("🎉 TIMER FINALIZADO! 🎉")
+        print(f"Minutos registrados: {recorded}")
         print("=" * 40)
 
-        save_session(objective, "timer", minutes)
+        save_session(objective, "timer", recorded)
     else:
         print("\nTimer cancelado. Sessão não salva.")
 
